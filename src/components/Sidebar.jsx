@@ -1,10 +1,16 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
+  ArchiveRestore,
   Bell,
   CalendarDays,
   CheckCheck,
   ChevronLeft,
+  Clock3,
+  Focus,
+  Flame,
+  Inbox,
+  KanbanSquare,
   ListChecks,
   LayoutDashboard,
   LogOut,
@@ -19,12 +25,17 @@ import { useTaskUI } from '../store/TaskUI.jsx'
 
 export const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/tasks', label: 'My Tasks', icon: ListChecks, badge: 'pending' },
+  { to: '/tasks?filter=inbox', label: 'Inbox', icon: Inbox, badge: 'pending' },
+  { to: '/tasks?filter=today', label: 'Today', icon: Clock3, badge: 'today' },
+  { to: '/tasks?filter=overdue', label: 'Overdue', icon: Flame, badge: 'overdue' },
+  { to: '/calendar', label: 'Upcoming', icon: CalendarDays },
+  { to: '/completed', label: 'Completed', icon: CheckCheck, badge: 'completed' },
+  { to: '/board', label: 'Board', icon: KanbanSquare },
   { to: '/priority', label: 'Smart Priority', icon: Sparkles, highlight: true },
-  { to: '/calendar', label: 'Calendar & Deadlines', icon: CalendarDays },
+  { to: '/focus', label: 'Focus mode', icon: Focus },
+  { to: '/archive', label: 'Archive & trash', icon: ArchiveRestore },
   { to: '/notifications', label: 'Notifications', icon: Bell, badge: 'unread' },
   { to: '/analytics', label: 'Task Analytics', icon: BarChart3 },
-  { to: '/completed', label: 'Completed', icon: CheckCheck, badge: 'completed' },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -32,9 +43,10 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
   const { user, stats, unreadCount, logout, toast } = useApp()
   const { openAdd } = useTaskUI()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const badgeValue = (kind) =>
-    kind === 'pending' ? stats.pending : kind === 'unread' ? unreadCount : kind === 'completed' ? stats.completed : 0
+    kind === 'pending' ? stats.pending : kind === 'unread' ? unreadCount : kind === 'completed' ? stats.completed : kind === 'today' ? stats.dueToday.length : kind === 'overdue' ? stats.overdue.length : 0
 
   const handleLogout = () => {
     logout()
@@ -55,7 +67,11 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-line bg-surface transition-[width,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:z-30 lg:translate-x-0 ${
           collapsed ? 'lg:w-[76px]' : 'lg:w-[262px]'
-        } w-[272px] ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}
+        } w-[280px] ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}
+        style={{
+          paddingTop: 'max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px))',
+          paddingBottom: 'max(0.5rem, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
+        }}
         aria-label="Main navigation"
       >
         <div className={`flex items-center gap-2 px-4 py-4 ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}>
@@ -105,32 +121,33 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
         <nav className="scroll-thin flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
           {NAV.map(({ to, label, icon: Icon, badge, highlight }) => {
             const count = badge ? badgeValue(badge) : 0
+            const taskFilter = new URLSearchParams(to.split('?')[1] || '').get('filter')
+            const active = taskFilter
+              ? location.pathname === '/tasks' && (new URLSearchParams(location.search).get('filter') || 'all') === taskFilter
+              : location.pathname === to
             return (
               <NavLink
                 key={to}
                 to={to}
                 onClick={onCloseMobile}
                 title={collapsed ? label : undefined}
-                className={({ isActive }) =>
-                  `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[0.86rem] font-semibold transition-all duration-200 ${
-                    isActive
+                className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[0.86rem] font-semibold transition-all duration-200 ${
+                    active
                       ? 'bg-gradient-to-r from-indigo-500/12 to-violet-500/10 text-accent'
                       : 'text-ink-2 hover:bg-surface-3 hover:text-ink'
-                  } ${collapsed ? 'lg:justify-center lg:px-0' : ''}`
-                }
+                  } ${collapsed ? 'lg:justify-center lg:px-0' : ''}`}
               >
-                {({ isActive }) => (
-                  <>
+                <>
                     <span
                       className={`absolute left-0 h-6 w-1 rounded-r-full bg-accent transition-all duration-300 ${
-                        isActive ? 'opacity-100' : 'opacity-0'
+                        active ? 'opacity-100' : 'opacity-0'
                       }`}
                       aria-hidden="true"
                     />
                     <Icon
                       size={18}
-                      className={highlight && !isActive ? 'text-accent-2' : ''}
-                      strokeWidth={isActive ? 2.4 : 2}
+                      className={highlight && !active ? 'text-accent-2' : ''}
+                      strokeWidth={active ? 2.4 : 2}
                     />
                     <span className={`flex-1 truncate ${collapsed ? 'lg:hidden' : ''}`}>{label}</span>
                     {count > 0 && (
@@ -142,8 +159,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                         {count}
                       </span>
                     )}
-                  </>
-                )}
+                </>
               </NavLink>
             )
           })}

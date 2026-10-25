@@ -1,20 +1,24 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider, useApp } from './store/AppStore.jsx'
 import { TaskUIProvider } from './store/TaskUI.jsx'
 import { AppLayout } from './components/AppLayout.jsx'
 import { Toasts } from './components/Toasts.jsx'
-import { Login } from './pages/Login.jsx'
-import { Dashboard } from './pages/Dashboard.jsx'
-import { AllTasks } from './pages/AllTasks.jsx'
-import { AddTask } from './pages/AddTask.jsx'
-import { SmartPriority } from './pages/SmartPriority.jsx'
-import { CalendarPage } from './pages/CalendarPage.jsx'
-import { Notifications } from './pages/Notifications.jsx'
-import { Analytics } from './pages/Analytics.jsx'
-import { Completed } from './pages/Completed.jsx'
-import { Settings } from './pages/Settings.jsx'
+const Login = lazy(() => import('./pages/Login.jsx').then((module) => ({ default: module.Login })))
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx').then((module) => ({ default: module.Dashboard })))
+const AllTasks = lazy(() => import('./pages/AllTasks.jsx').then((module) => ({ default: module.AllTasks })))
+const AddTask = lazy(() => import('./pages/AddTask.jsx').then((module) => ({ default: module.AddTask })))
+const SmartPriority = lazy(() => import('./pages/SmartPriority.jsx').then((module) => ({ default: module.SmartPriority })))
+const CalendarPage = lazy(() => import('./pages/CalendarPage.jsx').then((module) => ({ default: module.CalendarPage })))
+const Notifications = lazy(() => import('./pages/Notifications.jsx').then((module) => ({ default: module.Notifications })))
+const Analytics = lazy(() => import('./pages/Analytics.jsx').then((module) => ({ default: module.Analytics })))
+const Completed = lazy(() => import('./pages/Completed.jsx').then((module) => ({ default: module.Completed })))
+const Settings = lazy(() => import('./pages/Settings.jsx').then((module) => ({ default: module.Settings })))
+const Board = lazy(() => import('./pages/Board.jsx').then((module) => ({ default: module.Board })))
+const Focus = lazy(() => import('./pages/Focus.jsx').then((module) => ({ default: module.Focus })))
+const Archive = lazy(() => import('./pages/Archive.jsx').then((module) => ({ default: module.Archive })))
 
-/** Sends signed-out visitors to the login screen, remembering where they wanted to go. */
+
 function RequireAuth({ children }) {
   const { user } = useApp()
   const location = useLocation()
@@ -39,10 +43,15 @@ function NotFound() {
   )
 }
 
+function PageLoading() {
+  return <div className="grid min-h-[50vh] place-items-center" role="status"><span className="h-8 w-8 animate-spin rounded-full border-2 border-accent/25 border-t-accent" /><span className="sr-only">Loading page</span></div>
+}
+
 export default function App() {
   return (
     <AppProvider>
       <TaskUIProvider>
+        <Suspense fallback={<PageLoading />}>
         <Routes>
           <Route path="/login" element={<Login />} />
 
@@ -55,6 +64,10 @@ export default function App() {
           >
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/tasks" element={<AllTasks />} />
+            <Route path="/tasks/completed" element={<Completed />} />
+            <Route path="/board" element={<Board />} />
+            <Route path="/focus" element={<Focus />} />
+            <Route path="/archive" element={<Archive />} />
             <Route path="/add" element={<AddTask />} />
             <Route path="/priority" element={<SmartPriority />} />
             <Route path="/calendar" element={<CalendarPage />} />
@@ -67,6 +80,7 @@ export default function App() {
 
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+        </Suspense>
 
         <Toasts />
       </TaskUIProvider>

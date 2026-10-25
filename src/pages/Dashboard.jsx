@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -20,7 +20,7 @@ import { EmptyState } from '../components/EmptyState.jsx'
 import { CountUp, Meter, PriorityDonut, ProgressRing, WeeklyBars, CHART_COLORS } from '../components/charts/Charts.jsx'
 import { useApp } from '../store/AppStore.jsx'
 import { useTaskUI } from '../store/TaskUI.jsx'
-import { comparePriority, focusTask } from '../lib/priority.js'
+import { sortByPriority, focusTask } from '../lib/priority.js'
 import { daysUntil, greeting, isOverdue, longToday } from '../lib/date.js'
 import { motivationalMessage, productivityScore, weeklyCompletion } from '../lib/analytics.js'
 
@@ -57,22 +57,19 @@ function StatCard({ icon: Icon, label, value, hint, tone = 'accent', meter, max,
 }
 
 export function Dashboard() {
-  const { tasks, stats, user } = useApp()
+  const { tasks, stats, user, addTask, settings, toast, focusSessions } = useApp()
   const { openAdd } = useTaskUI()
+  const [quickTitle, setQuickTitle] = useState('')
+  const [quickCategory, setQuickCategory] = useState(settings.defaultCategory || 'Academic')
 
   const focus = useMemo(() => focusTask(tasks), [tasks])
   const score = useMemo(() => productivityScore(tasks, stats), [tasks, stats])
-  const weekly = useMemo(() => weeklyCompletion(tasks), [tasks])
+  const weekly = useMemo(() => weeklyCompletion(tasks, settings.weekStartsMonday), [tasks, settings.weekStartsMonday])
   const weekTotal = weekly.reduce((s, d) => s + d.value, 0)
+  const completedRecent = useMemo(() => tasks.filter((task) => task.completed && task.completedAt).sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)).slice(0, 4), [tasks])
+  const completedFocusMinutes = focusSessions.filter((session) => new Date(session.createdAt).toDateString() === new Date().toDateString()).reduce((sum, session) => sum + Number(session.actualMinutes || 0), 0)
 
-  const todayTasks = useMemo(
-    () =>
-      tasks
-        .filter((t) => !t.completed)
-        .sort(comparePriority)
-        .slice(0, 5),
-    [tasks],
-  )
+  const todayTasks = useMemo(() => sortByPriority(tasks.filter((t) => !t.completed && daysUntil(t) === 0)).slice(0, 5), [tasks])
 
   const donutData = [
     { key: 'high', label: 'High priority', value: stats.byPriority.high, color: CHART_COLORS.high },
@@ -82,9 +79,21 @@ export function Dashboard() {
 
   const attention = stats.overdue.length + stats.dueToday.length || stats.byPriority.high
 
+  const quickCreate = (event) => {
+    event.preventDefault()
+    const title = quickTitle.trim()
+    if (title.length < 3) {
+      toast('Add a little more detail', { tone: 'error', description: 'Task titles need at least 3 characters.' })
+      return
+    }
+    addTask({ title, category: quickCategory, priorityMode: settings.defaultPriority || 'auto', estimatedMinutes: settings.defaultDuration || 30, reminder: false, recurring: 'none', tags: [] })
+    setQuickTitle('')
+    toast('Task added to your inbox', { description: `Smart Priority ranked “${title}” using its deadline and task details.` })
+  }
+
   return (
     <div className="space-y-6">
-      {/* Hero */}
+      
       <section className="relative overflow-hidden rounded-xl2 border border-line bg-[#101a3a] p-5 text-white shadow-xl shadow-slate-900/10 sm:p-7">
         <div className="mesh absolute inset-0 opacity-80" aria-hidden="true" />
         <div className="grid-lines absolute inset-0 opacity-20" aria-hidden="true" />
@@ -109,7 +118,7 @@ export function Dashboard() {
                 <>No urgent deadlines today. A great moment to get ahead of next week.</>
               )}
             </p>
-            <p className="mt-1.5 max-w-xl text-[0.84rem] text-white/55">{motivationalMessage(stats, score)}</p>
+            {settings.motivationalMessages && <p className="mt-1.5 max-w-xl text-[0.84rem] text-white/55">{motivationalMessage(stats, score)}</p>}
 
             <div className="mt-5 flex flex-wrap gap-2.5">
               <button type="button" onClick={openAdd} className="btn bg-white text-indigo-700 hover:bg-white/90">
@@ -155,12 +164,21 @@ export function Dashboard() {
               <p className="mt-1.5 text-[0.72rem] text-white/55">
                 {stats.completed} of {stats.total} tasks completed
               </p>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[0.68rem] font-semibold text-white/75"><span className="rounded-full bg-white/10 px-2.5 py-1">✓ {stats.completedToday} finished today</span><span className="rounded-full bg-white/10 px-2.5 py-1">◷ {completedFocusMinutes} focus minutes</span></div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Stats */}
+      <form onSubmit={quickCreate} className="card flex flex-col gap-2.5 p-3 sm:flex-row sm:items-center sm:p-3.5">
+        <label htmlFor="quick-task" className="sr-only">What needs to be done?</label>
+        <input id="quick-task" className="field min-w-0 flex-1 !border-0 !bg-transparent !shadow-none" value={quickTitle} onChange={(event) => setQuickTitle(event.target.value)} placeholder="What needs to be done? Press Enter to add" />
+        <label htmlFor="quick-category" className="sr-only">Quick task category</label>
+        <select id="quick-category" value={quickCategory} onChange={(event) => setQuickCategory(event.target.value)} className="field !w-auto !py-2">{[...new Set(['Academic', 'Personal', 'Project', 'Exam Preparation', ...(settings.customCategories || [])])].map((category) => <option key={category} value={category}>{category}</option>)}</select>
+        <button type="submit" className="btn btn-primary"><Plus size={16}/>Quick add</button>
+      </form>
+
+      
       <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
           icon={ClipboardList}
@@ -204,7 +222,7 @@ export function Dashboard() {
         />
       </section>
 
-      {/* Focus + today */}
+      
       <div className="grid gap-5 grid-cols-1 xl:grid-cols-3">
         <div className="space-y-5 xl:col-span-2">
           <SmartFocusCard task={focus} />
@@ -225,8 +243,8 @@ export function Dashboard() {
                 compact
                 icon={CheckCircle2}
                 tone="done"
-                title="No pending tasks!"
-                message="You've cleared your list. Add a new task to keep the momentum going."
+                title="You're clear for today"
+                message="Enjoy the extra time, or get a head start on what's next."
                 actionLabel="Create task"
                 onAction={openAdd}
               />
@@ -240,7 +258,7 @@ export function Dashboard() {
           </section>
         </div>
 
-        {/* Deadlines */}
+        
         <section className="card h-fit p-4 sm:p-5">
           <SectionHeader
             title="Upcoming deadlines"
@@ -262,7 +280,12 @@ export function Dashboard() {
         </section>
       </div>
 
-      {/* Progress & analytics */}
+      <section className="card p-4 sm:p-5">
+        <SectionHeader title="Recently completed" subtitle="Progress you've already made" icon={CheckCircle2} action={<Link to="/completed" className="text-[0.78rem] font-semibold text-accent hover:underline">View history</Link>} />
+        {completedRecent.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">{completedRecent.map((task) => <div key={task.id} className="flex min-w-0 items-center gap-2.5 rounded-xl border border-line bg-surface-2 px-3 py-2.5"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-done/10 text-done"><CheckCircle2 size={15}/></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-ink">{task.title}</span><span className="block text-xs text-ink-3">{task.category}</span></span></div>)}</div> : <p className="text-sm text-ink-3">Completed tasks will appear here as you finish them.</p>}
+      </section>
+
+      
       <section className="grid gap-5 grid-cols-1 lg:grid-cols-3">
         <div className="card flex flex-col items-center p-5 text-center">
           <SectionHeader title="Overall progress" subtitle="Completed vs. everything you added" icon={TrendingUp} />

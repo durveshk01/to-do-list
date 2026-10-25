@@ -1,1 +1,19 @@
-.vercel
+node_modules/
+dist/
+.vercel/
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store
+Thumbs.db
+coverage/
+*.log
+
+# Mobile
+mobile/node_modules/
+mobile/.expo/
+android/.gradle/
+android/app/build/
+android/build/
+*.apk

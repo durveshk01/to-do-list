@@ -1,0 +1,26 @@
+{
+  "appId": "com.taskflow.app",
+  "appName": "TaskFlow",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#101a3a",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#101a3a"
+    },
+    "SystemBars": {
+      "initialViewportFitValueHint": "cover",
+      "insetsHandling": "css",
+      "style": "DARK"
+    }
+  }
+}

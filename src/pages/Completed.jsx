@@ -54,7 +54,7 @@ export function Completed() {
         subtitle="Everything you've finished, with the date you finished it."
       />
 
-      {/* Celebration banner */}
+      
       <section className="relative mb-5 overflow-hidden rounded-xl2 border border-emerald-500/25 bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-600 p-5 text-white shadow-lg shadow-emerald-500/20 sm:p-6">
         <div className="grid-lines absolute inset-0 opacity-15" aria-hidden="true" />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">

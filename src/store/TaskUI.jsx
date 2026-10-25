@@ -13,7 +13,7 @@ const CHEERS = [
 ]
 
 export function TaskUIProvider({ children }) {
-  const { tasks, setCompleted, deleteTask, restoreTask, toast } = useApp()
+  const { tasks, addTask, setCompleted, deleteTask, restoreTask, archiveTask, toggleFavorite, updateTask, settings, toast } = useApp()
   const [form, setForm] = useState({ open: false, mode: 'add', task: null })
   const [detail, setDetail] = useState({ open: false, id: null })
   const [confirm, setConfirm] = useState({ open: false, task: null })
@@ -24,6 +24,20 @@ export function TaskUIProvider({ children }) {
   const openEdit = useCallback((task) => setForm({ open: true, mode: 'edit', task }), [])
   const openDetail = useCallback((task) => setDetail({ open: true, id: task.id }), [])
   const closeDetail = useCallback(() => setDetail({ open: false, id: null }), [])
+  const duplicate = useCallback((task) => {
+    const copy = addTask({ ...task, title: `${task.title} (copy)`, completed: false, completedAt: null, status: 'todo', archived: false, deleted: false, recurring: 'none', activity: [] })
+    toast('Task duplicated', { description: `Created “${copy.title}”.` })
+  }, [addTask, toast])
+
+  const archive = useCallback((task) => {
+    archiveTask(task.id, !task.archived)
+    toast(task.archived ? 'Task restored' : 'Task archived', { description: `“${task.title}” ${task.archived ? 'is back in your workflow' : 'was moved to your archive'}.`, actionLabel: 'Undo', action: () => archiveTask(task.id, task.archived) })
+  }, [archiveTask, toast])
+
+  const favorite = useCallback((task) => {
+    toggleFavorite(task.id)
+    toast(task.favorite ? 'Removed from favorites' : 'Added to favorites', { tone: 'info', description: task.title })
+  }, [toggleFavorite, toast])
 
   const complete = useCallback(
     (task) => {
@@ -53,8 +67,6 @@ export function TaskUIProvider({ children }) {
 
   const toggle = useCallback((task) => (task.completed ? reopen(task) : complete(task)), [complete, reopen])
 
-  const askDelete = useCallback((task) => setConfirm({ open: true, task }), [])
-
   const doDelete = useCallback(
     (task) => {
       const removed = deleteTask(task.id)
@@ -69,9 +81,17 @@ export function TaskUIProvider({ children }) {
     [deleteTask, restoreTask, toast, detail.id, closeDetail],
   )
 
+  const askDelete = useCallback((task) => {
+    if (!settings.confirmBeforeDelete) {
+      doDelete(task)
+      return
+    }
+    setConfirm({ open: true, task })
+  }, [settings.confirmBeforeDelete, doDelete])
+
   const value = useMemo(
-    () => ({ openAdd, openEdit, openDetail, askDelete, complete, reopen, toggle }),
-    [openAdd, openEdit, openDetail, askDelete, complete, reopen, toggle],
+    () => ({ openAdd, openEdit, openDetail, askDelete, complete, reopen, toggle, duplicate, archive, favorite }),
+    [openAdd, openEdit, openDetail, askDelete, complete, reopen, toggle, duplicate, archive, favorite],
   )
 
   return (
@@ -95,6 +115,11 @@ export function TaskUIProvider({ children }) {
         }}
         onDelete={(task) => askDelete(task)}
         onToggle={toggle}
+        onDuplicate={duplicate}
+        onArchive={archive}
+        onFavorite={favorite}
+        onUpdate={updateTask}
+        taskCollection={tasks}
       />
 
       <ConfirmDialog

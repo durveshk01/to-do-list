@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertCircle,
   BellRing,
   Check,
   Database,
+  Download,
   LogOut,
   Monitor,
   Moon,
@@ -16,18 +17,39 @@ import {
   Sun,
   Trash2,
   TriangleAlert,
+  Upload,
   User,
 } from 'lucide-react'
 import { PageHeader, SectionHeader } from '../components/PageHeader.jsx'
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx'
 import { useApp } from '../store/AppStore.jsx'
 import { CATEGORIES, REMINDER_OFFSETS } from '../lib/priority.js'
+import { exportJson } from '../lib/storage.js'
 
 const THEMES = [
   { value: 'light', label: 'Light', icon: Sun, hint: 'Bright and crisp' },
   { value: 'dark', label: 'Dark', icon: Moon, hint: 'Easy on the eyes' },
   { value: 'system', label: 'System', icon: Monitor, hint: 'Follow your device' },
 ]
+const ACCENTS = ['indigo', 'violet', 'cyan', 'emerald', 'rose']
+const PRIORITIES = ['auto', 'none', 'low', 'medium', 'high', 'urgent']
+const SETTING_BOOLEANS = ['defaultReminder', 'browserNotifications', 'motivationalMessages', 'weekStartsMonday', 'autoArchiveCompleted', 'confirmBeforeDelete', 'compactMode', 'notificationOverdue', 'notificationUpcoming', 'notificationStreak']
+
+function mergeImportedSettings(current, imported) {
+  if (!imported || typeof imported !== 'object' || Array.isArray(imported)) return current
+  const next = { ...current }
+  for (const key of SETTING_BOOLEANS) if (typeof imported[key] === 'boolean') next[key] = imported[key]
+  if (['light', 'dark', 'system'].includes(imported.theme)) next.theme = imported.theme
+  if (ACCENTS.includes(imported.accentColor)) next.accentColor = imported.accentColor
+  if (PRIORITIES.includes(imported.defaultPriority)) next.defaultPriority = imported.defaultPriority
+  if (['medium', 'numeric', 'iso'].includes(imported.dateFormat)) next.dateFormat = imported.dateFormat
+  if (['12h', '24h'].includes(imported.timeFormat)) next.timeFormat = imported.timeFormat
+  if (typeof imported.defaultCategory === 'string') next.defaultCategory = imported.defaultCategory.slice(0, 60)
+  if (['15', '25', '30', '45', '60', '90'].includes(String(imported.defaultDuration))) next.defaultDuration = Number(imported.defaultDuration)
+  if (typeof imported.defaultReminderOffset === 'string' && REMINDER_OFFSETS.some((offset) => offset.value === imported.defaultReminderOffset)) next.defaultReminderOffset = imported.defaultReminderOffset
+  if (Array.isArray(imported.customCategories)) next.customCategories = [...new Set(imported.customCategories.filter((item) => typeof item === 'string').map((item) => item.trim().slice(0, 40)).filter(Boolean))].slice(0, 40)
+  return next
+}
 
 function Row({ title, description, children, htmlFor }) {
   return (
@@ -67,13 +89,15 @@ function Switch({ checked, onChange, label }) {
 }
 
 export function Settings() {
-  const { user, updateUser, settings, setSettings, stats, resetData, clearEverything, logout, toast } = useApp()
+  const { user, updateUser, settings, setSettings, stats, resetData, clearEverything, logout, toast, allTasks, replaceTasks, focusSessions, restoreFocusSessions } = useApp()
   const navigate = useNavigate()
+  const importRef = useRef(null)
 
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '' })
   const [errors, setErrors] = useState({})
   const [saved, setSaved] = useState(false)
-  const [confirm, setConfirm] = useState(null) // 'reset' | 'clear' | null
+  const [confirm, setConfirm] = useState(null)
+  const [newCategory, setNewCategory] = useState('')
 
   useEffect(() => {
     setProfile({ name: user?.name || '', email: user?.email || '' })
@@ -133,6 +157,54 @@ export function Settings() {
     navigate('/login')
   }
 
+  const handleExport = () => {
+    const content = exportJson({ tasks: allTasks, settings, user, focusSessions })
+    const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `taskflow-backup-${new Date().toISOString().slice(0, 10)}.json`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    toast('Backup exported', { description: `${allTasks.length} tasks saved to a JSON file.` })
+  }
+
+  const handleImport = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) {
+      toast('Backup is too large', { tone: 'error', description: 'Choose a JSON backup smaller than 10 MB.' })
+      return
+    }
+    try {
+      const backup = JSON.parse(await file.text())
+      const result = replaceTasks(Array.isArray(backup) ? backup : backup.tasks)
+      if (!result.valid) {
+        toast('Backup could not be imported', { tone: 'error', description: result.error })
+        return
+      }
+      if (backup.settings && typeof backup.settings === 'object') setSettings((current) => mergeImportedSettings(current, backup.settings))
+      if (Array.isArray(backup.focusSessions)) restoreFocusSessions(backup.focusSessions)
+      if (backup.user && typeof backup.user.name === 'string' && /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(backup.user.email || '')) updateUser({ name: backup.user.name.trim().slice(0, 100) || 'Student', email: backup.user.email.slice(0, 254) })
+      toast('Backup restored', { description: `${result.count} validated tasks are ready.` })
+    } catch {
+      toast('Backup could not be read', { tone: 'error', description: 'Choose a valid TaskFlow JSON backup file.' })
+    }
+  }
+
+  const addCategory = () => {
+    const name = newCategory.trim().slice(0, 40)
+    if (!name) return
+    const existing = [...CATEGORIES, ...(settings.customCategories || [])]
+    if (existing.some((category) => category.toLowerCase() === name.toLowerCase())) {
+      toast('Category already exists', { tone: 'info' })
+      return
+    }
+    patch('customCategories', [...(settings.customCategories || []), name])
+    setNewCategory('')
+    toast('Category added', { description: name })
+  }
+
   return (
     <div>
       <PageHeader
@@ -144,7 +216,7 @@ export function Settings() {
 
       <div className="grid gap-5 grid-cols-1 lg:grid-cols-[1.35fr_1fr]">
         <div className="space-y-5">
-          {/* Profile */}
+          
           <section className="card p-5">
             <SectionHeader title="Profile" subtitle="Shown in the sidebar and on your dashboard" icon={User} />
             <form onSubmit={saveProfile} noValidate className="space-y-4">
@@ -235,7 +307,7 @@ export function Settings() {
             </form>
           </section>
 
-          {/* Appearance */}
+          
           <section className="card p-5">
             <SectionHeader title="Appearance" subtitle="Pick the theme that suits your study hours" icon={Palette} />
             <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-3" role="radiogroup" aria-label="Theme">
@@ -270,9 +342,15 @@ export function Settings() {
                 )
               })}
             </div>
+            <div className="mt-5 border-t border-line pt-4">
+              <p className="text-sm font-semibold text-ink">Accent color</p>
+              <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Accent color">
+                {[['indigo', '#5b5bd6'], ['violet', '#7c3aed'], ['cyan', '#0891b2'], ['emerald', '#059669'], ['rose', '#e11d48']].map(([name, color]) => <button key={name} type="button" aria-label={`${name} accent`} aria-pressed={(settings.accentColor || 'indigo') === name} onClick={() => patch('accentColor', name)} className={`grid h-9 w-9 place-items-center rounded-full border-2 transition ${(settings.accentColor || 'indigo') === name ? 'border-ink scale-105' : 'border-transparent'}`} style={{ background: color }}><span className="sr-only">{name}</span>{(settings.accentColor || 'indigo') === name && <Check size={15} className="text-white"/>}</button>)}
+              </div>
+            </div>
           </section>
 
-          {/* Task defaults */}
+          
           <section className="card p-5">
             <SectionHeader
               title="New task defaults"
@@ -291,7 +369,7 @@ export function Settings() {
                   value={settings.defaultCategory}
                   onChange={(e) => patch('defaultCategory', e.target.value)}
                 >
-                  {CATEGORIES.map((c) => (
+                  {[...CATEGORIES, ...(settings.customCategories || [])].map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
@@ -310,6 +388,16 @@ export function Settings() {
                     label="Reminder on by default"
                   />
                 </div>
+              </Row>
+
+              <Row htmlFor="set-priority" title="Default priority" description="Choose a starting priority for newly created tasks.">
+                <select id="set-priority" className="field !py-2" value={settings.defaultPriority || 'auto'} onChange={(event) => patch('defaultPriority', event.target.value)}>
+                  {[['auto', 'Auto detect'], ['urgent', 'Urgent'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low'], ['none', 'None']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </Row>
+
+              <Row htmlFor="set-duration" title="Default task duration" description="Used as the first estimate when creating a task.">
+                <select id="set-duration" className="field !py-2" value={settings.defaultDuration || 30} onChange={(event) => patch('defaultDuration', Number(event.target.value))}>{[15, 25, 30, 45, 60, 90].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}</select>
               </Row>
 
               <Row
@@ -344,10 +432,21 @@ export function Settings() {
                   />
                 </div>
               </Row>
+              <Row title="Auto archive completed work" description="Move completed tasks to Archive seven days after completion."><div className="sm:flex sm:justify-end"><Switch checked={settings.autoArchiveCompleted || false} onChange={(value) => patch('autoArchiveCompleted', value)} label="Auto archive completed tasks" /></div></Row>
+              <Row title="Confirm before deleting" description="Ask before moving a task to Trash."><div className="sm:flex sm:justify-end"><Switch checked={settings.confirmBeforeDelete !== false} onChange={(value) => patch('confirmBeforeDelete', value)} label="Confirm before deleting" /></div></Row>
+              <Row title="Compact layout" description="Reduce card spacing to show more work at once."><div className="sm:flex sm:justify-end"><Switch checked={settings.compactMode || false} onChange={(value) => patch('compactMode', value)} label="Compact layout" /></div></Row>
+              <Row htmlFor="date-format" title="Date format" description="Choose how dates appear across TaskFlow."><select id="date-format" className="field !py-2" value={settings.dateFormat || 'medium'} onChange={(event) => patch('dateFormat', event.target.value)}><option value="medium">Oct 7, 2026</option><option value="numeric">07/10/2026</option><option value="iso">2026-10-07</option></select></Row>
+              <Row htmlFor="time-format" title="Time format" description="Choose 12 or 24-hour time."><select id="time-format" className="field !py-2" value={settings.timeFormat || '12h'} onChange={(event) => patch('timeFormat', event.target.value)}><option value="12h">12-hour</option><option value="24h">24-hour</option></select></Row>
+            </div>
+            <div className="mt-5 border-t border-line pt-4">
+              <p className="text-sm font-semibold text-ink">Categories</p>
+              <p className="mt-1 text-xs text-ink-3">Add your own categories alongside Study, Personal, Project, and Exam Preparation.</p>
+              <div className="mt-2 flex gap-2"><label htmlFor="new-category" className="sr-only">New category name</label><input id="new-category" className="field" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && (event.preventDefault(), addCategory())} placeholder="e.g. Health" maxLength={40}/><button type="button" className="btn btn-primary shrink-0" onClick={addCategory}>Add</button></div>
+              <div className="mt-2 flex flex-wrap gap-1.5">{(settings.customCategories || []).map((category) => <button key={category} type="button" className="chip bg-surface-2 text-ink-2" onClick={() => patch('customCategories', settings.customCategories.filter((item) => item !== category))} aria-label={`Remove ${category} category`}>{category}<span aria-hidden="true">×</span></button>)}</div>
             </div>
           </section>
 
-          {/* Notifications */}
+          
           <section className="card p-5">
             <SectionHeader
               title="Notifications"
@@ -380,11 +479,14 @@ export function Settings() {
                   />
                 </div>
               </Row>
+              <Row title="Overdue warnings" description="Keep overdue tasks in the notification center."><div className="sm:flex sm:justify-end"><Switch checked={settings.notificationOverdue !== false} onChange={(value) => patch('notificationOverdue', value)} label="Overdue warnings" /></div></Row>
+              <Row title="Upcoming deadlines" description="Show in-app reminders for tasks due soon."><div className="sm:flex sm:justify-end"><Switch checked={settings.notificationUpcoming !== false} onChange={(value) => patch('notificationUpcoming', value)} label="Upcoming deadline notifications" /></div></Row>
+              <Row title="Streak nudges" description="Allow a gentle in-app reminder when a daily streak is at risk."><div className="sm:flex sm:justify-end"><Switch checked={settings.notificationStreak || false} onChange={(value) => patch('notificationStreak', value)} label="Streak nudges" /></div></Row>
             </div>
           </section>
         </div>
 
-        {/* Sidebar column */}
+        
         <aside className="space-y-5 lg:sticky lg:top-24 lg:h-fit">
           <section className="card p-5">
             <SectionHeader title="Your data" subtitle="Everything lives in this browser" icon={Database} />
@@ -402,14 +504,18 @@ export function Settings() {
               ))}
             </dl>
             <p className="mt-3.5 text-[0.74rem] leading-relaxed text-ink-2">
-              Smart To-Do stores your tasks in this browser's local storage. Nothing is uploaded anywhere, and clearing
+              TaskFlow stores your tasks in this browser's local storage. Nothing is uploaded anywhere, and clearing
               your browser data will also clear your tasks.
             </p>
           </section>
 
           <section className="card p-5">
             <SectionHeader title="Reset options" subtitle="Handy while you're exploring the prototype" />
+            <input ref={importRef} type="file" accept="application/json,.json" className="sr-only" onChange={handleImport} aria-label="Import TaskFlow JSON backup" />
             <div className="space-y-2.5">
+              <button type="button" onClick={handleExport} className="btn btn-ghost w-full !justify-start"><Download size={16} />Export JSON backup</button>
+              <button type="button" onClick={() => importRef.current?.click()} className="btn btn-ghost w-full !justify-start"><Upload size={16} />Import JSON backup</button>
+              <p className="px-1 text-[0.72rem] text-ink-3">Imported tasks are validated before replacing this workspace.</p>
               <button type="button" onClick={() => setConfirm('reset')} className="btn btn-ghost w-full !justify-start">
                 <RotateCcw size={16} />
                 Restore sample tasks
@@ -431,6 +537,20 @@ export function Settings() {
             </div>
           </section>
 
+          <section className="card p-5">
+            <SectionHeader title="Keyboard shortcuts" subtitle="Navigate and act without reaching for the mouse" />
+            <div className="space-y-2 text-sm text-ink-2">
+              {[['Ctrl / ⌘ K', 'Search and commands'], ['N', 'Create a task'], ['E', 'Edit focused task'], ['Delete', 'Move focused task to Trash'], ['Space', 'Complete focused task'], ['G then D', 'Dashboard'], ['G then A', 'All tasks'], ['G then C', 'Calendar'], ['G then B', 'Board'], ['G then I', 'Analytics'], ['G then S', 'Settings']].map(([key, label]) => <div key={key} className="flex items-center justify-between gap-3"><span>{label}</span><kbd className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs font-semibold text-ink">{key}</kbd></div>)}
+            </div>
+            <button type="button" className="btn btn-ghost mt-4 w-full" onClick={() => window.dispatchEvent(new Event('taskflow:open-command'))}>Open command palette</button>
+          </section>
+
+          <section className="card p-5">
+            <SectionHeader title="Privacy and about" subtitle="Your productivity data stays in this browser" />
+            <p className="text-sm leading-relaxed text-ink-2">TaskFlow does not send task content or profile details to a server. Sign-in is a local prototype flow. Browser notifications are optional and can be disabled at any time.</p>
+            <div className="mt-4 border-t border-line pt-3 text-xs text-ink-3"><p>TaskFlow · Local-first productivity</p><p className="mt-1">Version 1.0 · Built with React and Vite</p></div>
+          </section>
+
           <section className="card border-high/25 p-5">
             <div className="flex items-start gap-3">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-high/12 text-high">
@@ -450,7 +570,7 @@ export function Settings() {
           </section>
 
           <p className="text-center text-[0.72rem] text-ink-3">
-            Smart To-Do — Know what matters. Do what matters first.
+            TaskFlow — Work, in flow.
           </p>
         </aside>
       </div>

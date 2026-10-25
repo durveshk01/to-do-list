@@ -1,21 +1,32 @@
 {
-  "name": "smart-todo",
+  "name": "taskflow",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Smart To-Do — Know what matters. Do what matters first.",
+  "description": "TaskFlow — plan clearly, focus deeply, make meaningful progress.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mobile:build": "vite build && cap sync android",
+    "mobile:sync": "cap sync",
+    "mobile:open": "cap open android",
+    "mobile:run": "cap run android"
   },
   "dependencies": {
+    "lucide-react": "^1.41.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.3",
-    "lucide-react": "^1.41.0"
+    "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "tailwindcss": "^4.3.3",

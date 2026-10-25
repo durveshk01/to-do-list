@@ -7,7 +7,7 @@ export const CHART_COLORS = {
   done: 'var(--chart-done)',
 }
 
-/** Numbers that count up when they change — used on the stat cards. */
+
 export function CountUp({ value = 0, duration = 700, className = '', suffix = '' }) {
   const [display, setDisplay] = useState(value)
 
@@ -29,7 +29,6 @@ export function CountUp({ value = 0, duration = 700, className = '', suffix = ''
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
 
   return (
@@ -40,9 +39,7 @@ export function CountUp({ value = 0, duration = 700, className = '', suffix = ''
   )
 }
 
-/**
- * Hero completion figure. One value, so no legend — the caption names it.
- */
+
 export function ProgressRing({ value = 0, size = 156, stroke = 13, label = 'Completed', sublabel }) {
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
@@ -84,10 +81,7 @@ export function ProgressRing({ value = 0, size = 156, stroke = 13, label = 'Comp
   )
 }
 
-/**
- * Weekly completed tasks. Single series → no legend; only the best day and today
- * get a direct label so the axis stays quiet.
- */
+
 export function WeeklyBars({ data = [], height = 132 }) {
   const max = Math.max(1, ...data.map((d) => d.value))
   const best = Math.max(...data.map((d) => d.value))
@@ -141,10 +135,7 @@ export function WeeklyBars({ data = [], height = 132 }) {
   )
 }
 
-/**
- * Priority distribution. Segments carry a 2px surface gap, a legend is always
- * present and every slice is labelled with its count (never colour alone).
- */
+
 export function PriorityDonut({ data = [], size = 168, stroke = 22 }) {
   const total = data.reduce((s, d) => s + d.value, 0)
   const r = (size - stroke) / 2
@@ -208,7 +199,7 @@ export function PriorityDonut({ data = [], size = 168, stroke = 22 }) {
   )
 }
 
-/** Slim horizontal meter used inside stat and category cards. */
+
 export function Meter({ value = 0, max = 100, color = 'var(--chart-done)', className = '' }) {
   const pct = max ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
   return (

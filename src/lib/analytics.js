@@ -3,9 +3,9 @@ import { analyze } from './priority.js'
 
 const FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-/** Completed tasks per day for the current Monday→Sunday week. */
-export function weeklyCompletion(tasks) {
-  const keys = weekKeys()
+
+export function weeklyCompletion(tasks, startsMonday = true) {
+  const keys = weekKeys(new Date(), startsMonday)
   const today = toKey()
   const counts = new Map(keys.map((k) => [k, 0]))
   tasks.forEach((t) => {
@@ -13,16 +13,18 @@ export function weeklyCompletion(tasks) {
     const key = toKey(new Date(t.completedAt))
     if (counts.has(key)) counts.set(key, counts.get(key) + 1)
   })
-  return keys.map((k, i) => ({
+  return keys.map((k) => {
+    const date = new Date(`${k}T12:00:00`)
+    return {
     key: k,
-    label: weekdayShort((i + 1) % 7),
-    full: FULL[i],
+    label: weekdayShort(date.getDay()),
+    full: FULL[(date.getDay() + 6) % 7],
     value: counts.get(k),
     isToday: k === today,
-  }))
+  }})
 }
 
-/** 0–100 productivity score blending completion rate, urgency control and momentum. */
+
 export function productivityScore(tasks, stats) {
   if (!tasks.length) return 0
   const completion = stats.percent
@@ -42,7 +44,7 @@ export function motivationalMessage(stats, score) {
   return 'Small steps count. Finish one task now and your progress ring moves.'
 }
 
-/** Completed / pending split per category, for the analytics page. */
+
 export function categoryBreakdown(tasks) {
   const map = new Map()
   tasks.forEach((t) => {
@@ -55,11 +57,87 @@ export function categoryBreakdown(tasks) {
   return [...map.values()].sort((a, b) => b.total - a.total)
 }
 
-/** Priority split across every task (completed tasks keep their original band). */
+
 export function priorityBreakdown(tasks) {
   const out = { high: 0, medium: 0, low: 0 }
   tasks.forEach((t) => {
-    out[analyze(t).priority] += 1
+    const priority = analyze(t).priority
+    out[priority === 'urgent' ? 'high' : priority === 'none' ? 'low' : priority] += 1
   })
   return out
+}
+
+export function streakSummary(tasks, now = new Date()) {
+  const days = new Set(tasks.filter((task) => task.completedAt).map((task) => toKey(new Date(task.completedAt))))
+  const today = toKey(now)
+  const yesterday = toKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
+  let current = 0
+  let cursor = days.has(today) ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) : new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+  if (days.has(today) || days.has(yesterday)) {
+    while (days.has(toKey(cursor))) {
+      current += 1
+      cursor.setDate(cursor.getDate() - 1)
+    }
+  }
+  const ordered = [...days].sort()
+  let longest = 0
+  let run = 0
+  let previous = null
+  ordered.forEach((key) => {
+    const currentDate = new Date(`${key}T12:00:00`)
+    const gap = previous ? Math.round((currentDate - previous) / 86_400_000) : 0
+    run = gap === 1 ? run + 1 : 1
+    longest = Math.max(longest, run)
+    previous = currentDate
+  })
+  return { current, longest, activeDays: days.size }
+}
+
+export function completionInsights(tasks, focusSessions = []) {
+  const completed = tasks.filter((task) => task.completedAt)
+  const weekdays = new Map(FULL.map((day) => [day, 0]))
+  const hours = new Map()
+  completed.forEach((task) => {
+    const date = new Date(task.completedAt)
+    weekdays.set(FULL[(date.getDay() + 6) % 7], (weekdays.get(FULL[(date.getDay() + 6) % 7]) || 0) + 1)
+    hours.set(date.getHours(), (hours.get(date.getHours()) || 0) + 1)
+  })
+  const bestDay = [...weekdays].sort((a, b) => b[1] - a[1])[0]
+  const bestHour = [...hours].sort((a, b) => b[1] - a[1])[0]
+  const minutes = focusSessions.reduce((sum, session) => sum + Number(session.actualMinutes || 0), 0)
+  const focusCount = focusSessions.length
+  return {
+    completedCount: completed.length,
+    bestDay: bestDay?.[1] ? bestDay[0] : null,
+    bestHour: bestHour?.[1] ? `${String(bestHour[0]).padStart(2, '0')}:00` : null,
+    averageFocusMinutes: focusCount ? Math.round(minutes / focusCount) : 0,
+    averageCompletionMinutes: completed.filter((task) => task.actualMinutes > 0).length ? Math.round(completed.reduce((sum, task) => sum + (Number(task.actualMinutes) || 0), 0) / completed.filter((task) => task.actualMinutes > 0).length) : 0,
+    focusMinutes: minutes,
+    focusCount,
+  }
+}
+
+export function completionRange(tasks, days = 7, now = new Date()) {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + 1)
+  return tasks.filter((task) => task.completedAt && new Date(task.completedAt) >= start && new Date(task.completedAt) <= now)
+}
+
+export function activityHeatmap(tasks, days = 91, now = new Date()) {
+  const completed = new Map()
+  const created = new Map()
+  tasks.forEach((task) => {
+    if (task.completedAt) {
+      const key = toKey(new Date(task.completedAt))
+      completed.set(key, (completed.get(key) || 0) + 1)
+    }
+    if (task.createdAt) {
+      const key = toKey(new Date(task.createdAt))
+      created.set(key, (created.get(key) || 0) + 1)
+    }
+  })
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + index + 1)
+    const key = toKey(date)
+    return { key, completed: completed.get(key) || 0, created: created.get(key) || 0 }
+  })
 }

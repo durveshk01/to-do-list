@@ -44,18 +44,6 @@ function SearchBox({ id = 'global-search' }) {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const ref = useOutside(() => setOpen(false))
-  const inputRef = useRef(null)
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        inputRef.current?.focus()
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [])
 
   const results = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -78,7 +66,6 @@ function SearchBox({ id = 'global-search' }) {
       <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
       <input
         id={id}
-        ref={inputRef}
         value={q}
         onChange={(e) => {
           setQ(e.target.value)
@@ -334,8 +321,13 @@ export function Topbar({ onOpenMobileNav }) {
   const { openAdd } = useTaskUI()
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur-xl">
-      <div className="flex items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6">
+    <header
+      className="sticky top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur-xl transition-[padding]"
+      style={{
+        paddingTop: 'max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px))',
+      }}
+    >
+      <div className="flex items-center gap-2 px-4 py-2.5 sm:gap-3 sm:px-6">
         <button
           type="button"
           onClick={onOpenMobileNav}
@@ -349,7 +341,7 @@ export function Topbar({ onOpenMobileNav }) {
           <SearchBox id="global-search" />
         </div>
         <div className="min-w-0 flex-1 sm:hidden">
-          <p className="truncate font-display text-[0.95rem] font-extrabold text-ink">Smart To-Do</p>
+          <p className="truncate font-display text-[0.95rem] font-extrabold text-ink">TaskFlow</p>
           <p className="truncate text-[0.68rem] text-ink-3">{longToday()}</p>
         </div>
 

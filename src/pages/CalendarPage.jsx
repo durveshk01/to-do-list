@@ -8,12 +8,11 @@ import { EmptyState } from '../components/EmptyState.jsx'
 import { useApp } from '../store/AppStore.jsx'
 import { useTaskUI } from '../store/TaskUI.jsx'
 import { analyze } from '../lib/priority.js'
-import { dueDateTime, formatDate, formatTime, isOverdue, monthGrid, monthName, toKey, weekdayShort } from '../lib/date.js'
-
-const DOW = [1, 2, 3, 4, 5, 6, 0]
+import { dueDateTime, formatDate, formatTime, isOverdue, monthGrid, monthName, toKey, weekdayShort, weekKeys } from '../lib/date.js'
 
 export function CalendarPage() {
-  const { tasks } = useApp()
+  const { tasks, updateTask, toast, settings } = useApp()
+  const DOW = settings.weekStartsMonday ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6]
   const { openDetail, openAdd } = useTaskUI()
   const today = new Date()
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() })
@@ -32,8 +31,29 @@ export function CalendarPage() {
     return map
   }, [tasks])
 
-  const grid = useMemo(() => monthGrid(cursor.year, cursor.month), [cursor])
+  const grid = useMemo(() => monthGrid(cursor.year, cursor.month, settings.weekStartsMonday), [cursor, settings.weekStartsMonday])
   const selectedTasks = byDate.get(selected) || []
+  const week = useMemo(() => weekKeys(new Date(`${selected}T12:00:00`), settings.weekStartsMonday), [selected, settings.weekStartsMonday])
+  const activeDates = view === 'day' ? week.filter((date) => date === selected) : week
+
+  const reschedule = (taskId, date) => {
+    if (!taskId || !date) return
+    updateTask(taskId, { dueDate: date })
+    setSelected(date)
+    const [year, month] = date.split('-').map(Number)
+    setCursor({ year, month: month - 1 })
+    toast('Deadline rescheduled', { tone: 'success', icon: 'calendar' })
+  }
+
+  const dragTask = (event, task) => {
+    event.dataTransfer.setData('text/taskflow-task', task.id)
+    event.dataTransfer.effectAllowed = 'move'
+  }
+
+  const dropTask = (event, date) => {
+    event.preventDefault()
+    reschedule(event.dataTransfer.getData('text/taskflow-task'), date)
+  }
 
   const shift = (delta) => {
     setCursor((c) => {
@@ -68,29 +88,12 @@ export function CalendarPage() {
         subtitle="See every deadline in context — click a task to open its details."
         actions={
           <>
-            <div className="flex rounded-xl border border-line bg-surface p-0.5" role="group" aria-label="View mode">
-              <button
-                type="button"
-                onClick={() => setView('month')}
-                aria-pressed={view === 'month'}
-                title="Month view"
-                className={`rounded-lg px-2.5 py-1.5 transition ${
-                  view === 'month' ? 'bg-accent-soft text-accent' : 'text-ink-3 hover:text-ink'
-                }`}
-              >
-                <LayoutGrid size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setView('list')}
-                aria-pressed={view === 'list'}
-                title="List view"
-                className={`rounded-lg px-2.5 py-1.5 transition ${
-                  view === 'list' ? 'bg-accent-soft text-accent' : 'text-ink-3 hover:text-ink'
-                }`}
-              >
-                <ListOrdered size={16} />
-              </button>
+            <div className="flex rounded-xl border border-line bg-surface p-0.5" role="group" aria-label="Calendar view">
+              {[['month', 'Month', LayoutGrid], ['week', 'Week', LayoutGrid], ['day', 'Day', CalendarDays], ['list', 'List', ListOrdered]].map(([key, label, Icon]) => (
+                <button key={key} type="button" onClick={() => setView(key)} aria-pressed={view === key} title={`${label} view`} className={`rounded-lg px-2.5 py-1.5 text-[0.72rem] font-semibold transition ${view === key ? 'bg-accent-soft text-accent' : 'text-ink-3 hover:text-ink'}`}>
+                  <span className="flex items-center gap-1.5"><Icon size={14} /><span className="hidden sm:inline">{label}</span></span>
+                </button>
+              ))}
             </div>
             <button type="button" onClick={openAdd} className="btn btn-primary">
               <Plus size={16} />
@@ -151,6 +154,8 @@ export function CalendarPage() {
                       onClick={() => setSelected(cell.key)}
                       aria-pressed={isSelected}
                       aria-label={`${formatDate(cell.key)}, ${items.length} task${items.length === 1 ? '' : 's'}`}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => dropTask(event, cell.key)}
                       className={`min-h-[4.1rem] rounded-xl border p-1.5 text-left transition sm:min-h-[5.4rem] ${
                         isSelected
                           ? 'border-accent bg-accent-soft ring-1 ring-accent/40'
@@ -201,6 +206,19 @@ export function CalendarPage() {
                 <PriorityBadge priority="low" />
               </div>
             </section>
+          ) : view === 'week' || view === 'day' ? (
+            <section className="card p-4 sm:p-5">
+              <SectionHeader title={view === 'day' ? formatDate(selected) : 'Week of ' + formatDate(week[0])} subtitle="Drag a task to another day to reschedule its deadline." action={<div className="flex gap-1.5"><button type="button" onClick={() => { const d = new Date(`${selected}T12:00:00`); d.setDate(d.getDate() - (view === 'day' ? 1 : 7)); setSelected(toKey(d)); }} aria-label="Previous period" className="rounded-lg border border-line bg-surface p-1.5 text-ink-2"><ChevronLeft size={16} /></button><button type="button" onClick={() => { const d = new Date(`${selected}T12:00:00`); d.setDate(d.getDate() + (view === 'day' ? 1 : 7)); setSelected(toKey(d)); }} aria-label="Next period" className="rounded-lg border border-line bg-surface p-1.5 text-ink-2"><ChevronRight size={16} /></button></div>} />
+              <div className="mt-4 space-y-2">
+                {activeDates.map((day) => {
+                  const items = byDate.get(day) || []
+                  return <div key={day} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTask(event, day)} className="grid gap-2 rounded-xl border border-line bg-surface-2 p-3 sm:grid-cols-[9rem_1fr]">
+                    <div><p className="text-xs font-bold text-ink">{formatDate(day)}</p><p className="mt-0.5 text-[0.7rem] text-ink-3">{items.length} task{items.length === 1 ? '' : 's'}</p></div>
+                    <div className="space-y-2">{items.length ? items.map((task) => <div key={task.id} draggable onDragStart={(event) => dragTask(event, task)} className="cursor-grab active:cursor-grabbing"><TaskCard task={task} compact /></div>) : <p className="rounded-lg border border-dashed border-line-strong px-3 py-3 text-xs text-ink-3">Drop a task here or add a deadline</p>}</div>
+                  </div>
+                })}
+              </div>
+            </section>
           ) : (
             <section className="card p-4 sm:p-5">
               <SectionHeader
@@ -239,14 +257,14 @@ export function CalendarPage() {
               ) : (
                 <div className="space-y-2.5">
                   {monthTasks.map((t) => (
-                    <TaskCard key={t.id} task={t} compact />
+                    <div key={t.id} draggable onDragStart={(event) => dragTask(event, t)} className="cursor-grab active:cursor-grabbing"><TaskCard task={t} compact /></div>
                   ))}
                 </div>
               )}
             </section>
           )}
 
-          {/* Selected day */}
+          
           <section className="card p-4 sm:p-5">
             <SectionHeader
               title={formatDate(selected)}

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
-/** Accessible dialog shell: Escape to close, focus trap, scroll lock, click-outside. */
+
 export function Modal({ open, onClose, title, description, icon, children, footer, size = 'md', variant = 'center' }) {
   const panelRef = useRef(null)
   const restoreTo = useRef(null)
@@ -90,10 +90,24 @@ export function Modal({ open, onClose, title, description, icon, children, foote
           </button>
         </header>
 
-        <div className="scroll-thin flex-1 overflow-y-auto px-5 py-5 sm:px-6">{children}</div>
+        <div
+          className="scroll-thin flex-1 overflow-y-auto px-5 py-5 sm:px-6"
+          style={{
+            paddingBottom: !footer
+              ? 'max(1.25rem, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))'
+              : undefined,
+          }}
+        >
+          {children}
+        </div>
 
         {footer && (
-          <footer className="flex flex-col-reverse gap-2 border-t border-line bg-surface-2 px-5 py-3.5 sm:flex-row sm:justify-end sm:px-6">
+          <footer
+            className="flex flex-col-reverse gap-2 border-t border-line bg-surface-2 px-5 py-3.5 sm:flex-row sm:justify-end sm:px-6"
+            style={{
+              paddingBottom: 'max(0.875rem, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
+            }}
+          >
             {footer}
           </footer>
         )}

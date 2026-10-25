@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Minus } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Minus, CircleDashed, Siren } from 'lucide-react'
 import { PRIORITY_META } from '../lib/priority.js'
 
 const ICONS = {
@@ -6,6 +6,8 @@ const ICONS = {
   medium: Minus,
   low: ArrowDown,
   completed: CheckCircle2,
+  urgent: Siren,
+  none: CircleDashed,
 }
 
 const STYLES = {
@@ -13,11 +15,11 @@ const STYLES = {
   medium: 'bg-medium/14 text-medium ring-1 ring-inset ring-medium/28',
   low: 'bg-low/12 text-low ring-1 ring-inset ring-low/25',
   completed: 'bg-done/12 text-done ring-1 ring-inset ring-done/25',
+  urgent: 'bg-high/18 text-high ring-1 ring-inset ring-high/40',
+  none: 'bg-surface-3 text-ink-3 ring-1 ring-inset ring-line',
 }
 
-/**
- * Priority is always communicated with an icon + words, never colour alone.
- */
+
 export function PriorityBadge({ priority = 'low', full = false, size = 'sm', className = '' }) {
   const meta = PRIORITY_META[priority] || PRIORITY_META.low
   const Icon = ICONS[priority] || ArrowUp

@@ -1,7 +1,4 @@
-/* ---------------------------------------------------------------------------
-   Smart Priority Detection
-   A transparent scoring model — every point is explainable to the user.
---------------------------------------------------------------------------- */
+
 import { daysUntil, isOverdue } from './date.js'
 
 export const CATEGORIES = ['Academic', 'Personal', 'Project', 'Exam Preparation', 'Other']
@@ -16,9 +13,11 @@ export const CATEGORY_WEIGHT = {
 
 export const PRIORITY_MODES = [
   { value: 'auto', label: 'Auto Detect' },
+  { value: 'none', label: 'No priority' },
   { value: 'high', label: 'High' },
   { value: 'medium', label: 'Medium' },
   { value: 'low', label: 'Low' },
+  { value: 'urgent', label: 'Urgent' },
 ]
 
 export const REMINDER_OFFSETS = [
@@ -74,9 +73,11 @@ export const PRIORITY_META = {
     border: 'border-done/30',
     solid: 'bg-done',
   },
+  urgent: { key: 'urgent', label: 'Urgent', short: 'Urgent', dot: '🚨', color: 'var(--color-high)', text: 'text-high', bg: 'bg-high/15', border: 'border-high/40', solid: 'bg-high' },
+  none: { key: 'none', label: 'No priority', short: 'None', dot: '⚪', color: 'var(--color-ink-3)', text: 'text-ink-3', bg: 'bg-surface-3', border: 'border-line', solid: 'bg-ink-3' },
 }
 
-/** Factor 1 — how close is the deadline? */
+
 export function urgencyPoints(task) {
   const days = daysUntil(task)
   if (days === null) return { points: 0, label: 'No deadline set' }
@@ -88,13 +89,13 @@ export function urgencyPoints(task) {
   return { points: 10, label: 'Deadline is more than a week away' }
 }
 
-/** Factor 2 — how important is this kind of task? */
+
 export function categoryPoints(task) {
   const points = CATEGORY_WEIGHT[task.category] ?? 5
   return { points, label: `${task.category} category weight` }
 }
 
-/** Factor 3 — status & follow-through signals. */
+
 export function statusPoints(task) {
   const out = []
   if (!task.completed) out.push({ points: 10, label: 'Task is still pending' })
@@ -103,41 +104,59 @@ export function statusPoints(task) {
   return out
 }
 
+export function effortPoints(task) {
+  if (!task.estimatedMinutes) return { points: 0, label: 'No effort estimate' }
+  if (task.estimatedMinutes <= 30) return { points: 10, label: 'Small task is quick to complete' }
+  if (task.estimatedMinutes <= 60) return { points: 6, label: 'Estimated effort is about an hour' }
+  return { points: 2, label: 'Long task benefits from an early start' }
+}
+
+export function agePoints(task, now = new Date()) {
+  const age = Math.max(0, Math.floor((now - new Date(task.createdAt || now)) / 86_400_000))
+  const points = task.completed ? 0 : Math.min(10, age)
+  return { points, label: points ? `Waiting for ${age} day${age === 1 ? '' : 's'}` : 'Recently added' }
+}
+
+export function isBlocked(task, tasks = []) {
+  const dependencies = Array.isArray(task.dependencies) ? task.dependencies : []
+  return dependencies.some((id) => tasks.some((candidate) => candidate.id === id && !candidate.completed))
+}
+
 export const MAX_SCORE = 100
 
-/**
- * Full breakdown for a task: score, factor rows, resulting priority and whether
- * the user overrode the automatic result.
- */
-export function analyze(task) {
+
+export function analyze(task, context = {}) {
   const urgency = urgencyPoints(task)
   const category = categoryPoints(task)
   const status = statusPoints(task)
+  const effort = effortPoints(task)
+  const age = agePoints(task)
+  const blocked = isBlocked(task, context.tasks || [])
 
   const factors = [
     { group: 'Deadline urgency', ...urgency },
     { group: 'Category importance', ...category },
+    { group: 'Estimated effort', ...effort },
+    { group: 'Task age', ...age },
     ...status.map((s) => ({ group: 'Status signals', ...s })),
+    ...(blocked ? [{ group: 'Dependencies', points: -25, label: 'Waiting for a prerequisite task' }] : []),
   ]
 
-  const score = Math.min(
-    MAX_SCORE,
-    factors.reduce((sum, f) => sum + f.points, 0),
-  )
+  const score = Math.max(0, Math.min(MAX_SCORE, factors.reduce((sum, f) => sum + f.points, 0)))
 
   const autoPriority = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low'
   const manual = task.priorityMode && task.priorityMode !== 'auto'
   const priority = manual ? task.priorityMode : autoPriority
 
-  return { score, factors, autoPriority, priority, manual }
+  return { score, factors, autoPriority, priority, manual, blocked }
 }
 
-/** Convenience — just the resolved priority key. */
+
 export function priorityOf(task) {
   return analyze(task).priority
 }
 
-/** Human-readable "why is this important?" bullets. */
+
 export function reasonsFor(task) {
   const { factors, manual, priority } = analyze(task)
   const reasons = factors.filter((f) => f.points > 0).map((f) => f.label)
@@ -146,22 +165,27 @@ export function reasonsFor(task) {
   return reasons
 }
 
-const RANK = { high: 0, medium: 1, low: 2 }
+const RANK = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 }
 
-/** Sort: priority band first, then nearest deadline, then higher score. */
-export function comparePriority(a, b) {
-  const A = analyze(a)
-  const B = analyze(b)
+
+export function comparePriority(a, b, allTasks = []) {
+  const A = analyze(a, { tasks: allTasks })
+  const B = analyze(b, { tasks: allTasks })
   if (RANK[A.priority] !== RANK[B.priority]) return RANK[A.priority] - RANK[B.priority]
   const da = daysUntil(a)
   const db = daysUntil(b)
   if (da === null && db !== null) return 1
   if (db === null && da !== null) return -1
   if (da !== db && da !== null && db !== null) return da - db
+  if ((a.estimatedMinutes || Infinity) !== (b.estimatedMinutes || Infinity)) return (a.estimatedMinutes || Infinity) - (b.estimatedMinutes || Infinity)
   return B.score - A.score
 }
 
-/** The single task the user should do next. */
+export function sortByPriority(tasks) {
+  return [...tasks].sort((a, b) => comparePriority(a, b, tasks))
+}
+
+
 export function focusTask(tasks) {
-  return [...tasks].filter((t) => !t.completed).sort(comparePriority)[0] || null
+  return sortByPriority(tasks.filter((t) => !t.completed && !t.archived && !t.deleted && !isBlocked(t, tasks)))[0] || null
 }

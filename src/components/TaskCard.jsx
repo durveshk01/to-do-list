@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { BellRing, CalendarClock, Check, Eye, MoreVertical, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { Archive, BellRing, CalendarClock, Check, Copy, Eye, MoreVertical, Pencil, RotateCcw, Star, Trash2 } from 'lucide-react'
 import { PriorityBadge } from './PriorityBadge.jsx'
 import { analyze } from '../lib/priority.js'
 import { formatTime, isOverdue, shortDue } from '../lib/date.js'
 import { useTaskUI } from '../store/TaskUI.jsx'
 
 function QuickMenu({ task }) {
-  const { openDetail, openEdit, askDelete, toggle } = useTaskUI()
+  const { openDetail, openEdit, askDelete, toggle, duplicate, archive, favorite } = useTaskUI()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -27,6 +27,9 @@ function QuickMenu({ task }) {
   const items = [
     { label: 'View details', icon: Eye, run: () => openDetail(task) },
     { label: 'Edit task', icon: Pencil, run: () => openEdit(task) },
+    { label: task.favorite ? 'Unfavorite' : 'Add to favorites', icon: Star, run: () => favorite(task) },
+    { label: 'Duplicate', icon: Copy, run: () => duplicate(task) },
+    { label: task.archived ? 'Restore from archive' : 'Archive', icon: Archive, run: () => archive(task) },
     {
       label: task.completed ? 'Reopen task' : 'Mark complete',
       icon: task.completed ? RotateCcw : Check,
@@ -101,9 +104,7 @@ export function TaskCheckbox({ task, onToggle }) {
   )
 }
 
-/**
- * The task row used across the dashboard, task list, completed page and search.
- */
+
 export function TaskCard({ task, compact = false, showScore = false }) {
   const { openDetail, toggle } = useTaskUI()
   const { priority, score } = analyze(task)
@@ -112,14 +113,16 @@ export function TaskCard({ task, compact = false, showScore = false }) {
 
   return (
     <article
+      data-task-id={task.id}
       role="button"
       tabIndex={0}
       onClick={() => openDetail(task)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === 'Enter') {
           e.preventDefault()
           openDetail(task)
         }
+        if (e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggle(task) }
       }}
       className={`card card-hover group relative flex cursor-pointer gap-3 overflow-hidden ${
         compact ? 'p-3.5' : 'p-4'

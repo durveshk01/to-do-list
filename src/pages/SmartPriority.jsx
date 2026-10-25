@@ -6,10 +6,11 @@ import { EmptyState } from '../components/EmptyState.jsx'
 import { Meter } from '../components/charts/Charts.jsx'
 import { useApp } from '../store/AppStore.jsx'
 import { useTaskUI } from '../store/TaskUI.jsx'
-import { CATEGORY_WEIGHT, analyze, comparePriority } from '../lib/priority.js'
+import { CATEGORY_WEIGHT, analyze, sortByPriority } from '../lib/priority.js'
 import { formatDateTime, relativeDue, shortDue } from '../lib/date.js'
 
 const SCALE = [
+  { label: 'Overdue', points: '+55' },
   { label: 'Due today', points: '+50' },
   { label: 'Due tomorrow', points: '+40' },
   { label: 'Within 3 days', points: '+30' },
@@ -55,12 +56,8 @@ export function SmartPriority() {
 
   const ranked = useMemo(
     () =>
-      tasks
-        .filter((t) => !t.completed)
-        .sort(comparePriority)
-        .map((task, index) => ({ task, index, ...analyze(task) })),
-    // nonce forces the animation to replay on Recalculate
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      sortByPriority(tasks.filter((t) => !t.completed))
+        .map((task, index) => ({ task, index, ...analyze(task, { tasks }) })),
     [tasks, nonce],
   )
 
@@ -123,7 +120,7 @@ export function SmartPriority() {
         }
       />
 
-      {/* How it works */}
+      
       <section className="mb-5 grid gap-4 grid-cols-1 lg:grid-cols-[1.4fr_1fr]">
         <div className="card overflow-hidden">
           <header className="flex items-center gap-2 border-b border-line bg-gradient-to-r from-indigo-500/10 to-violet-500/5 px-4 py-3">
@@ -154,8 +151,8 @@ export function SmartPriority() {
               </ul>
               <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-surface-2 px-2.5 py-2 text-[0.72rem] text-ink-2">
                 <Info size={13} className="mt-0.5 shrink-0 text-accent" />
-                Pending tasks get +10, and an active reminder adds +5. Pick a priority manually and it overrides the
-                automatic result.
+                Pending tasks add +10 and reminders +5. Effort adds up to +10; waiting time adds up to +10. A blocked
+                prerequisite subtracts 25. Manual priority always overrides the automatic band.
               </p>
             </div>
           </div>
@@ -181,7 +178,7 @@ export function SmartPriority() {
         </div>
       </section>
 
-      {/* Ranked list */}
+      
       {ranked.length === 0 ? (
         <EmptyState
           icon={BrainCircuit}
@@ -329,7 +326,7 @@ export function SmartPriority() {
                           <li key={`${f.label}-${i}`} className="flex items-center gap-1.5 text-[0.78rem] text-ink-2">
                             <Check size={12} strokeWidth={3} className="shrink-0 text-done" aria-hidden="true" />
                             <span className="flex-1">{f.label}</span>
-                            <span className="font-semibold text-ink">+{f.points}</span>
+                            <span className={`font-semibold ${f.points < 0 ? 'text-high' : 'text-ink'}`}>{f.points > 0 ? '+' : ''}{f.points}</span>
                           </li>
                         ))}
                     </ul>

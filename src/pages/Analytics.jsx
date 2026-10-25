@@ -1,13 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, CheckCircle2, Flame, ListChecks, Target, TrendingUp } from 'lucide-react'
+import { BarChart3, BadgeCheck, CalendarDays, CheckCircle2, Flame, ListChecks, Target, Timer, TrendingUp, Trophy } from 'lucide-react'
 import { PageHeader, SectionHeader } from '../components/PageHeader.jsx'
 import { PriorityBadge } from '../components/PriorityBadge.jsx'
 import { EmptyState } from '../components/EmptyState.jsx'
 import { CHART_COLORS, CountUp, Meter, PriorityDonut, ProgressRing, WeeklyBars } from '../components/charts/Charts.jsx'
 import { useApp } from '../store/AppStore.jsx'
 import { useTaskUI } from '../store/TaskUI.jsx'
-import { categoryBreakdown, priorityBreakdown, productivityScore, weeklyCompletion } from '../lib/analytics.js'
+import { activityHeatmap, categoryBreakdown, completionInsights, completionRange, priorityBreakdown, productivityScore, streakSummary, weeklyCompletion } from '../lib/analytics.js'
 
 function MiniStat({ label, value, tone = 'accent', icon: Icon, hint }) {
   const tones = {
@@ -32,17 +32,28 @@ function MiniStat({ label, value, tone = 'accent', icon: Icon, hint }) {
   )
 }
 
+function Insight({ label, value }) {
+  return <div className="rounded-xl border border-line bg-surface-2 p-3.5"><p className="text-[0.7rem] font-semibold uppercase tracking-wide text-ink-3">{label}</p><p className="mt-1 font-display text-lg font-bold text-ink">{value}</p></div>
+}
+
 export function Analytics() {
-  const { tasks, stats } = useApp()
+  const { tasks, stats, focusSessions, settings } = useApp()
   const { openAdd } = useTaskUI()
   const navigate = useNavigate()
+  const [range, setRange] = useState('7')
 
   const score = useMemo(() => productivityScore(tasks, stats), [tasks, stats])
-  const weekly = useMemo(() => weeklyCompletion(tasks), [tasks])
+  const weekly = useMemo(() => weeklyCompletion(tasks, settings.weekStartsMonday), [tasks, settings.weekStartsMonday])
   const categories = useMemo(() => categoryBreakdown(tasks), [tasks])
   const allPriority = useMemo(() => priorityBreakdown(tasks), [tasks])
   const weekTotal = weekly.reduce((s, d) => s + d.value, 0)
   const bestDay = weekly.reduce((best, d) => (d.value > best.value ? d : best), weekly[0])
+  const streak = useMemo(() => streakSummary(tasks), [tasks])
+  const insights = useMemo(() => completionInsights(tasks, focusSessions), [tasks, focusSessions])
+  const heatmap = useMemo(() => activityHeatmap(tasks), [tasks])
+  const focusStreak = useMemo(() => streakSummary(focusSessions.map((session) => ({ completedAt: session.createdAt }))), [focusSessions])
+  const rangeCompletions = useMemo(() => range === 'all' ? tasks.filter((task) => task.completedAt) : completionRange(tasks, Number(range)), [tasks, range])
+  const achievementCount = [stats.completed >= 1, stats.completed >= 10, stats.completed >= 50, stats.completed >= 100, streak.longest >= 7, streak.longest >= 30].filter(Boolean).length
 
   const pendingDonut = [
     { key: 'high', label: 'High priority', value: stats.byPriority.high, color: CHART_COLORS.high },
@@ -74,6 +85,7 @@ export function Analytics() {
         subtitle="How your workload is split, and how much of it you're clearing."
         actions={
           <>
+            <label htmlFor="analytics-range" className="sr-only">Analytics date range</label><select id="analytics-range" className="field !w-auto !py-2" value={range} onChange={(event) => setRange(event.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="all">All time</option></select>
             <button type="button" onClick={() => navigate('/tasks?filter=pending')} className="btn btn-ghost">
               <ListChecks size={16} />
               View Pending
@@ -86,8 +98,16 @@ export function Analytics() {
         }
       />
 
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MiniStat label="Daily streak" value={streak.current} tone="medium" icon={Flame} hint={`Longest: ${streak.longest} days`} />
+        <MiniStat label="Completed in range" value={rangeCompletions.length} icon={CheckCircle2} hint={`${rangeCompletions.length} of ${stats.total} total tasks finished`} />
+        <MiniStat label="Focus time" value={insights.focusMinutes} tone="done" icon={Timer} hint={`${insights.focusCount} sessions recorded`} />
+        <MiniStat label="Focus streak" value={focusStreak.current} tone="medium" icon={Target} hint={`Longest: ${focusStreak.longest} days`} />
+        <MiniStat label="Achievements" value={achievementCount} tone="accent" icon={Trophy} hint="Earned from real task activity" />
+      </div>
+
       <div className="grid gap-5 grid-cols-1 lg:grid-cols-[1fr_1.25fr]">
-        {/* My progress */}
+        
         <section className="card p-5">
           <SectionHeader title="My progress" subtitle="Completion across every task you've added" icon={Target} />
           <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
@@ -134,7 +154,7 @@ export function Analytics() {
           </div>
         </section>
 
-        {/* Charts */}
+        
         <div className="space-y-5">
           <section className="card p-5">
             <SectionHeader
@@ -162,7 +182,7 @@ export function Analytics() {
         </div>
       </div>
 
-      {/* Category + all-time priority */}
+      
       <div className="mt-5 grid gap-5 grid-cols-1 lg:grid-cols-[1.3fr_1fr]">
         <section className="card p-5">
           <SectionHeader title="By category" subtitle="Where your time actually goes" icon={BarChart3} />
@@ -222,6 +242,30 @@ export function Analytics() {
           </div>
         </section>
       </div>
+
+      <section className="card mt-5 p-5">
+        <SectionHeader title="Productivity insights" subtitle="Calculated from your completed tasks and saved focus sessions" icon={BadgeCheck} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Insight label="Most productive day" value={insights.bestDay || 'Not enough data'} />
+          <Insight label="Most productive time" value={insights.bestHour || 'Not enough data'} />
+          <Insight label="Average focus session" value={insights.focusCount ? `${insights.averageFocusMinutes} min` : 'No sessions yet'} />
+          <Insight label="Completion rate" value={`${stats.percent}%`} />
+          <Insight label="Average tracked task time" value={insights.averageCompletionMinutes ? `${insights.averageCompletionMinutes} min` : 'Not tracked yet'} />
+        </div>
+        <div className="mt-5 rounded-2xl border border-line bg-surface-2 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="flex items-center gap-2 font-display text-sm font-bold text-ink"><CalendarDays size={16} className="text-accent"/>Productivity heatmap</h3><p className="mt-1 text-xs text-ink-3">Task completions over the last 13 weeks. Focus a day for its activity summary.</p></div><div className="flex items-center gap-2 text-[0.68rem] text-ink-3"><span>Less</span>{[0,1,2,3,4].map((level) => <span key={level} aria-hidden="true" className="h-3 w-3 rounded-[3px]" style={{ background: level ? `color-mix(in srgb, var(--chart-done) ${level * 22}%, var(--color-surface-3))` : 'var(--color-surface-3)' }} />)}<span>More</span></div></div>
+          <div className="mt-3 grid grid-flow-col grid-rows-7 gap-1 overflow-x-auto pb-1" role="list" aria-label="Daily task completions and creations for the past 13 weeks">{heatmap.map((day) => { const level = Math.min(4, day.completed); return <span key={day.key} role="listitem" tabIndex={0} aria-label={`${day.key}: ${day.completed} completed, ${day.created} created`} title={`${day.key}: ${day.completed} completed, ${day.created} created`} className="h-3.5 w-3.5 rounded-[3px] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" style={{ background: level ? `color-mix(in srgb, var(--chart-done) ${level * 22}%, var(--color-surface-3))` : 'var(--color-surface-3)' }} />})}</div>
+          <p className="mt-2 text-[0.7rem] text-ink-3">Each day includes both completed and created task counts.</p>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">{[
+          ['First task', stats.completed >= 1],
+          ['10 completed', stats.completed >= 10],
+          ['50 completed', stats.completed >= 50],
+          ['100 completed', stats.completed >= 100],
+          ['7-day streak', streak.longest >= 7],
+          ['30-day streak', streak.longest >= 30],
+        ].map(([name, earned]) => <span key={name} className={`chip px-3 py-1.5 ${earned ? 'bg-done/10 text-done' : 'bg-surface-2 text-ink-3'}`} aria-label={`${name}: ${earned ? 'earned' : 'locked'}`}>{earned ? '✓' : '○'} {name}</span>)}</div>
+      </section>
     </div>
   )
 }

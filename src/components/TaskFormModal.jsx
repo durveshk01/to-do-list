@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, BellRing, CalendarClock, Check, Sparkles } from 'lucide-react'
+import { AlertCircle, BellRing, CalendarClock, Check, Paperclip, Sparkles, X } from 'lucide-react'
 import { Modal } from './Modal.jsx'
 import { PriorityBadge } from './PriorityBadge.jsx'
 import { CATEGORIES, PRIORITY_MODES, REMINDER_OFFSETS, analyze } from '../lib/priority.js'
 import { toKey } from '../lib/date.js'
 import { useApp } from '../store/AppStore.jsx'
+import { readAttachment, RECURRENCE_OPTIONS } from '../lib/taskModel.js'
 
 const blank = (settings) => ({
   title: '',
@@ -12,9 +13,19 @@ const blank = (settings) => ({
   category: settings?.defaultCategory || 'Academic',
   dueDate: toKey(),
   dueTime: '23:59',
-  priorityMode: 'auto',
+  priorityMode: settings?.defaultPriority || 'auto',
   reminder: settings?.defaultReminder ?? true,
   reminderOffset: settings?.defaultReminderOffset || '1h',
+  status: 'todo',
+  tags: [],
+  startDate: '',
+  estimatedMinutes: Number(settings?.defaultDuration) || 30,
+  recurring: 'none',
+  recurrenceInterval: 1,
+  attachments: [],
+  subtasks: [],
+  notes: '',
+  favorite: false,
 })
 
 function Label({ htmlFor, children, required, hint }) {
@@ -44,19 +55,42 @@ function FieldError({ children, id }) {
 }
 
 export function TaskFormModal({ open, mode = 'add', task, onClose }) {
-  const { addTask, updateTask, toast, settings } = useApp()
+  const { addTask, updateTask, toast, settings, tasks } = useApp()
+  const categories = [...new Set([...CATEGORIES, ...(settings.customCategories || [])])]
   const [form, setForm] = useState(() => blank(settings))
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState(false)
+  const [tagInput, setTagInput] = useState('')
+  const [subtaskInput, setSubtaskInput] = useState('')
+  const [attachmentBusy, setAttachmentBusy] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setErrors({})
     setTouched(false)
     setForm(mode === 'edit' && task ? { ...task } : blank(settings))
+    setTagInput('')
+    setSubtaskInput('')
+    setAttachmentBusy(false)
   }, [open, mode, task, settings])
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }))
+
+  const addAttachments = async (event) => {
+    const files = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (!files.length) return
+    setAttachmentBusy(true)
+    try {
+      const added = await Promise.all(files.map(readAttachment))
+      setForm((current) => ({ ...current, attachments: [...(current.attachments || []), ...added].slice(0, 5) }))
+      toast('Attachments added', { tone: 'success', description: 'Files are stored with this task in your browser.' })
+    } catch (error) {
+      toast('Attachment could not be added', { tone: 'error', description: error.message })
+    } finally {
+      setAttachmentBusy(false)
+    }
+  }
 
   const preview = useMemo(
     () => analyze({ ...form, completed: false, category: form.category || 'Other' }),
@@ -80,7 +114,6 @@ export function TaskFormModal({ open, mode = 'add', task, onClose }) {
 
   useEffect(() => {
     if (touched) setErrors(validate(form))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, touched])
 
   const submit = (e) => {
@@ -177,7 +210,7 @@ export function TaskFormModal({ open, mode = 'add', task, onClose }) {
               value={form.category}
               onChange={(e) => set({ category: e.target.value })}
             >
-              {CATEGORIES.map((c) => (
+              {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
@@ -227,9 +260,68 @@ export function TaskFormModal({ open, mode = 'add', task, onClose }) {
               onChange={(e) => set({ dueTime: e.target.value })}
             />
           </div>
+          <div>
+            <Label htmlFor="taskStatus">Status</Label>
+            <select id="taskStatus" className="field" value={form.status || 'todo'} onChange={(e) => set({ status: e.target.value })}>
+              <option value="inbox">Inbox</option>
+              <option value="todo">To do</option>
+              <option value="in-progress">In progress</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="estimatedMinutes">Estimated effort</Label>
+            <div className="relative">
+              <input id="estimatedMinutes" type="number" min="0" max="10080" step="5" className="field pr-20" value={form.estimatedMinutes || 0} onChange={(e) => set({ estimatedMinutes: Math.max(0, Number(e.target.value) || 0) })} />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-3">minutes</span>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="startDate">Start date</Label>
+            <input id="startDate" type="date" className="field" value={form.startDate || ''} onChange={(e) => set({ startDate: e.target.value })} />
+          </div>
+          <div>
+            <Label htmlFor="recurring">Repeat</Label>
+            <select id="recurring" className="field" value={form.recurring || 'none'} onChange={(e) => set({ recurring: e.target.value })}>
+              {RECURRENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
+          {form.recurring === 'custom' && <div><Label htmlFor="recurrenceInterval">Repeat every</Label><div className="relative"><input id="recurrenceInterval" type="number" min="1" max="365" className="field pr-16" value={form.recurrenceInterval || 1} onChange={(event) => set({ recurrenceInterval: Math.max(1, Math.min(365, Number(event.target.value) || 1)) })}/><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-3">days</span></div></div>}
         </div>
 
-        {/* Reminder */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="taskTags">Tags</Label>
+            <input id="taskTags" className="field" placeholder="assignment, coding, urgent" value={tagInput || (form.tags || []).join(', ')} onChange={(e) => { setTagInput(e.target.value); set({ tags: e.target.value.split(',').map((tag) => tag.trim().replace(/^#/, '')).filter(Boolean) }) }} />
+            <p className="mt-1 text-xs text-ink-3">Separate tags with commas.</p>
+          </div>
+          <div>
+            <Label htmlFor="taskSubtasks">Subtasks</Label>
+            <textarea id="taskSubtasks" rows={3} className="field resize-y" placeholder={'Read the brief\nDraft the outline'} value={subtaskInput || (form.subtasks || []).map((item) => item.title).join('\n')} onChange={(e) => { setSubtaskInput(e.target.value); set({ subtasks: e.target.value.split('\n').map((title) => title.trim()).filter(Boolean).map((title) => ({ title, completed: false, children: [] })) }) }} />
+            <p className="mt-1 text-xs text-ink-3">One subtask per line. You can track them from task details.</p>
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="taskNotes" hint="Private to you">Notes</Label>
+          <textarea id="taskNotes" rows={2} className="field resize-y" value={form.notes || ''} onChange={(e) => set({ notes: e.target.value })} placeholder="Links, context or anything to remember…" />
+        </div>
+
+        <div>
+          <Label htmlFor="taskDependencies">Blocked by</Label>
+          <select id="taskDependencies" multiple className="field min-h-24" value={form.dependencies || []} onChange={(event) => set({ dependencies: Array.from(event.target.selectedOptions, (option) => option.value) })} aria-describedby="dependency-hint">
+            {tasks.filter((item) => item.id !== task?.id && !item.deleted && !item.archived).map((item) => <option key={item.id} value={item.id}>{item.completed ? '✓ ' : ''}{item.title}</option>)}
+          </select>
+          <p id="dependency-hint" className="mt-1 text-xs text-ink-3">Hold Ctrl or ⌘ to choose multiple prerequisites. A task stays blocked until they’re complete.</p>
+        </div>
+
+        <div>
+          <Label htmlFor="taskAttachments" hint="Up to 5 files, 500 KB each">Attachments</Label>
+          <input id="taskAttachments" type="file" multiple className="field file:mr-3 file:rounded-lg file:border-0 file:bg-accent-soft file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-accent" onChange={addAttachments} disabled={attachmentBusy || (form.attachments || []).length >= 5}/>
+          <ul className="mt-2 space-y-1">{(form.attachments || []).map((file) => <li key={file.id} className="flex items-center gap-2 rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-xs"><Paperclip size={13} className="text-accent"/><span className="min-w-0 flex-1 truncate text-ink-2">{file.name}</span><button type="button" onClick={() => set({ attachments: form.attachments.filter((item) => item.id !== file.id) })} aria-label={`Remove ${file.name}`} className="rounded p-1 text-ink-3 hover:text-high"><X size={14}/></button></li>)}</ul>
+          <p className="mt-1 text-xs text-ink-3">Attached files stay on this device with the task.</p>
+        </div>
+
+        
         <div className="rounded-2xl border border-line bg-surface-2 p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -278,7 +370,7 @@ export function TaskFormModal({ open, mode = 'add', task, onClose }) {
           )}
         </div>
 
-        {/* Live smart-priority preview */}
+        
         <div className="overflow-hidden rounded-2xl border border-accent/25 bg-gradient-to-br from-indigo-500/10 via-violet-500/8 to-transparent p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="flex items-center gap-2 text-[0.8rem] font-bold text-ink">

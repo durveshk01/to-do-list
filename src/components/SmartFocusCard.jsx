@@ -4,9 +4,7 @@ import { analyze } from '../lib/priority.js'
 import { formatDateTime, relativeDue } from '../lib/date.js'
 import { useTaskUI } from '../store/TaskUI.jsx'
 
-/**
- * The signature card: what should I do next, and why.
- */
+
 export function SmartFocusCard({ task, className = '' }) {
   const { openDetail, complete, openAdd } = useTaskUI()
 
@@ -89,7 +87,7 @@ export function SmartFocusCard({ task, className = '' }) {
             </div>
           </div>
 
-          {/* score dial */}
+          
           <div className="flex shrink-0 items-center gap-4 rounded-2xl bg-white/10 p-4 backdrop-blur-sm lg:flex-col lg:gap-2">
             <div className="text-center">
               <p className="font-display text-3xl font-extrabold leading-none">{score}</p>

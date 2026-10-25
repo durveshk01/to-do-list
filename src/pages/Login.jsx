@@ -47,7 +47,7 @@ export function Login() {
 
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
-      {/* Brand panel */}
+      
       <section className="relative hidden overflow-hidden bg-[#0d1533] p-10 text-white lg:flex lg:flex-col xl:p-14">
         <div className="mesh absolute inset-0 opacity-90" aria-hidden="true" />
         <div className="grid-lines absolute inset-0 opacity-40" aria-hidden="true" />
@@ -56,8 +56,8 @@ export function Login() {
         <div className="relative flex items-center gap-3">
           <LogoMark size={44} />
           <div>
-            <p className="font-display text-lg font-extrabold">Smart To-Do</p>
-            <p className="text-[0.72rem] text-white/60">Intelligent Priority Detection</p>
+            <p className="font-display text-lg font-extrabold">TaskFlow</p>
+            <p className="text-[0.72rem] text-white/60">Your personal productivity system</p>
           </div>
         </div>
 
@@ -70,7 +70,7 @@ export function Login() {
             </span>
           </h1>
           <p className="mt-4 max-w-md text-[0.98rem] leading-relaxed text-white/70">
-            Organize your tasks. Detect priorities. Never miss a deadline.
+            Plan clearly. Focus deeply. Make meaningful progress every day.
           </p>
 
           <ul className="mt-9 space-y-3.5">
@@ -104,7 +104,7 @@ export function Login() {
         </div>
       </section>
 
-      {/* Login card */}
+      
       <section className="flex items-center justify-center bg-canvas px-4 py-10 sm:px-8">
         <div className="w-full max-w-[26rem]">
           <div className="mb-7 flex justify-center lg:hidden">

@@ -1,8 +1,8 @@
-/* Date helpers — everything the app needs to talk about deadlines in plain English. */
+
 
 export const MS_DAY = 86400000
 
-/** Local YYYY-MM-DD for a Date (never use toISOString here — it shifts by timezone). */
+
 export function toKey(date = new Date()) {
   const d = new Date(date)
   const m = `${d.getMonth() + 1}`.padStart(2, '0')
@@ -10,14 +10,14 @@ export function toKey(date = new Date()) {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
-/** Add days to today and return a YYYY-MM-DD key. */
+
 export function keyFromToday(offsetDays) {
   const d = new Date()
   d.setDate(d.getDate() + offsetDays)
   return toKey(d)
 }
 
-/** Next occurrence of a weekday (0=Sun..6=Sat), always in the future. */
+
 export function keyOfNextWeekday(weekday) {
   const d = new Date()
   const diff = (weekday - d.getDay() + 7) % 7 || 7
@@ -31,7 +31,7 @@ export function startOfDay(date = new Date()) {
   return d
 }
 
-/** Combine the stored date + time fields into a real Date. Null when no deadline. */
+
 export function dueDateTime(task) {
   if (!task?.dueDate) return null
   const [y, m, d] = task.dueDate.split('-').map(Number)
@@ -40,7 +40,7 @@ export function dueDateTime(task) {
   return new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0)
 }
 
-/** Whole calendar days between today and the deadline. Negative = overdue. */
+
 export function daysUntil(task) {
   const due = dueDateTime(task)
   if (!due) return null
@@ -75,6 +75,9 @@ export const monthName = (i) => MONTHS[i]
 export function formatTime(time) {
   if (!time) return ''
   const [h, m] = time.split(':').map(Number)
+  let format = '12h'
+  try { format = JSON.parse(localStorage.getItem('smart-todo:settings') || '{}').timeFormat || format } catch { format = '12h' }
+  if (format === '24h') return `${`${h}`.padStart(2, '0')}:${`${m}`.padStart(2, '0')}`
   const suffix = h >= 12 ? 'PM' : 'AM'
   const hour = h % 12 === 0 ? 12 : h % 12
   return `${hour}:${`${m}`.padStart(2, '0')} ${suffix}`
@@ -83,7 +86,11 @@ export function formatTime(time) {
 export function formatDate(dateKey) {
   if (!dateKey) return 'No deadline'
   const [y, m, d] = dateKey.split('-').map(Number)
-  return `${d} ${MONTHS[m - 1]} ${y}`
+  let format = 'medium'
+  try { format = JSON.parse(localStorage.getItem('smart-todo:settings') || '{}').dateFormat || format } catch { format = 'medium' }
+  if (format === 'iso') return `${y}-${`${m}`.padStart(2, '0')}-${`${d}`.padStart(2, '0')}`
+  if (format === 'numeric') return `${`${d}`.padStart(2, '0')}/${`${m}`.padStart(2, '0')}/${y}`
+  return `${MONTHS[m - 1].slice(0, 3)} ${d}, ${y}`
 }
 
 export function formatDateTime(task) {
@@ -92,7 +99,7 @@ export function formatDateTime(task) {
   return task.dueTime ? `${date}, ${formatTime(task.dueTime)}` : date
 }
 
-/** "Due today", "Overdue by 2 days", "Due in 5 days" … */
+
 export function relativeDue(task) {
   const days = daysUntil(task)
   if (days === null) return 'No deadline'
@@ -109,7 +116,7 @@ export function relativeDue(task) {
   return `Due ${formatDate(task.dueDate)}`
 }
 
-/** Short label used on compact task cards. */
+
 export function shortDue(task) {
   const days = daysUntil(task)
   if (days === null) return 'No deadline'
@@ -123,7 +130,7 @@ export function shortDue(task) {
   return formatDate(task.dueDate).replace(/ \d{4}$/, '')
 }
 
-/** Timeline bucket for the deadline groups. */
+
 export function deadlineBucket(task) {
   const days = daysUntil(task)
   if (days === null) return 'later'
@@ -134,7 +141,7 @@ export function deadlineBucket(task) {
   return 'later'
 }
 
-/** "Today at 10:30 AM" / "Yesterday at 7:45 PM" / "12 Aug at 9:00 AM" */
+
 export function humanStamp(iso) {
   if (!iso) return ''
   const d = new Date(iso)
@@ -144,7 +151,7 @@ export function humanStamp(iso) {
   if (days === 0) return `Today at ${time}`
   if (days === 1) return `Yesterday at ${time}`
   if (days < 7 && days > 0) return `${days} days ago at ${time}`
-  return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)} at ${time}`
+  return `${formatDate(toKey(d))} at ${time}`
 }
 
 export function greeting(date = new Date()) {
@@ -155,13 +162,13 @@ export function greeting(date = new Date()) {
 }
 
 export function longToday(date = new Date()) {
-  return `${WEEKDAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`
+  return `${WEEKDAYS[date.getDay()]}, ${formatDate(toKey(date))}`
 }
 
-/** Monday-first week containing `date`, as an array of 7 YYYY-MM-DD keys. */
-export function weekKeys(date = new Date()) {
+
+export function weekKeys(date = new Date(), startsMonday = true) {
   const d = startOfDay(date)
-  const offset = (d.getDay() + 6) % 7
+  const offset = startsMonday ? (d.getDay() + 6) % 7 : d.getDay()
   d.setDate(d.getDate() - offset)
   return Array.from({ length: 7 }, (_, i) => {
     const x = new Date(d)
@@ -170,10 +177,10 @@ export function weekKeys(date = new Date()) {
   })
 }
 
-/** 6x7 grid of day cells for a month view. */
-export function monthGrid(year, month) {
+
+export function monthGrid(year, month, startsMonday = true) {
   const first = new Date(year, month, 1)
-  const lead = (first.getDay() + 6) % 7
+  const lead = startsMonday ? (first.getDay() + 6) % 7 : first.getDay()
   const start = new Date(year, month, 1 - lead)
   return Array.from({ length: 42 }, (_, i) => {
     const d = new Date(start)

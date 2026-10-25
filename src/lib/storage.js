@@ -5,6 +5,7 @@ export const KEYS = {
   user: `${PREFIX}user`,
   settings: `${PREFIX}settings`,
   notifications: `${PREFIX}notification-state`,
+  focusSessions: `${PREFIX}focus-sessions`,
 }
 
 export function load(key, fallback) {
@@ -22,7 +23,7 @@ export function save(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value))
   } catch {
-    /* storage full or blocked — the prototype keeps working in memory */
+    
   }
 }
 
@@ -30,10 +31,14 @@ export function remove(key) {
   try {
     localStorage.removeItem(key)
   } catch {
-    /* ignore */
+    
   }
 }
 
 export function clearAll() {
   Object.values(KEYS).forEach(remove)
+}
+
+export function exportJson(value) {
+  return JSON.stringify({ format: 'taskflow-backup', version: 1, exportedAt: new Date().toISOString(), ...value }, null, 2)
 }

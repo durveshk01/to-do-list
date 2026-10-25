@@ -22,7 +22,7 @@ const make = (task) => ({
   ...task,
 })
 
-/** Realistic student workload so the dashboard looks alive on first launch. */
+
 export function seedTasks() {
   seq = 0
   return [
